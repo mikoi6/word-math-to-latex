@@ -1,0 +1,28 @@
+{
+  "name": "word-math-to-latex",
+  "version": "1.0.0",
+  "description": "把 .docx 里文字与公式混排的段落拆开：文字原样保留，公式转成 LaTeX；裸 LaTeX 源码则渲染成排好版的公式。单文件、零安装、完全离线。",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test-core.mjs",
+    "build": "node build-doc.mjs",
+    "bundle": "node bundle-offline.mjs"
+  },
+  "keywords": [
+    "docx",
+    "omml",
+    "latex",
+    "katex",
+    "mathml",
+    "word",
+    "converter",
+    "offline"
+  ],
+  "author": "mikoi6",
+  "license": "MIT",
+  "devDependencies": {
+    "katex": "^0.16.11",
+    "mathjax-full": "^3.2.2"
+  }
+}
