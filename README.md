@@ -22,7 +22,7 @@ Word 里的公式**不是文字**，是一套叫 OMML 的 XML，藏在 docx 那�
 
 ## 快速开始
 
-**方式一（推荐）**：下载 `word-math-to-latex.html`，双击用 Chrome / Edge 打开。没装过任何环境也能跑。
+**方式一（推荐）**：到 [Releases](https://github.com/mikoi6/word-math-to-latex/releases/latest) 下载 `word-math-to-latex.html`，双击用 Chrome / Edge 打开。没装过任何环境也能跑。
 
 **方式二**：如果开启 GitHub Pages，则是 `index.html`，直接在线用。
 
