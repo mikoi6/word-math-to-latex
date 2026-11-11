@@ -207,6 +207,20 @@ body{
 .dlg-hint{flex:1;min-width:200px;font-size:12.5px;color:var(--muted);line-height:1.65}
 .dlg-hint b{color:var(--ink);font-weight:600}
 
+/* 保存失败时的兜底区：给出可点的下载链接和具体原因 */
+.dlg-err{
+  margin:0 18px 12px;padding:11px 14px;border-radius:9px;
+  background:#fff6ed;border:1px solid #fed7aa;color:#8a4b06;
+  font-size:13px;line-height:1.75;
+}
+.dlg-err b{color:#7c2d12}
+.dlg-err .dl-save{
+  display:inline-block;margin:6px 0 2px;padding:7px 15px;border-radius:8px;
+  background:#2563eb;color:#fff;font-weight:600;text-decoration:none;font-size:13px;
+}
+.dlg-err .dl-save:hover{background:#1d4ed8}
+.dlg-err code{background:rgba(0,0,0,.06);padding:1px 4px;border-radius:4px;font-size:12px}
+
 @media (max-width:760px){
   .wrap{padding:26px 16px 56px}
   .hd h1{font-size:24px}
@@ -303,6 +317,7 @@ body{
     </div>
     <div class="dlg-meta" id="dlgMeta"></div>
     <div class="dlg-body" id="dlgBody"></div>
+    <div class="dlg-err" id="dlgErr" hidden></div>
     <div class="dlg-ft">
       <div class="dlg-hint" id="dlgHint"></div>
       <button class="btn" id="dlgCancel">取消</button>
@@ -1681,20 +1696,6 @@ body{
       '\n</style>\n</head>\n<body>\n<div class="page">\n' + bodyHtml + '\n</div>\n</body>\n</html>';
   }
 
-  function downloadFile(name, content, mime) {
-    var blob = (content instanceof Blob)
-      ? content
-      : new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1500);
-    return blob;
-  }
-
   /* ---------------- 导出：预览 + 选择保存位置 ---------------- */
 
   var dlgEl = $('dlg'), dlgBody = $('dlgBody'), dlgMeta = $('dlgMeta'), dlgHint = $('dlgHint');
@@ -1794,10 +1795,11 @@ body{
       b.classList.toggle('on', b.dataset.out === fmt);
     });
     dlgHint.innerHTML = FORMATS[fmt].hint;
+    clearSaveErr();
 
     var myToken = ++outToken;
     var saveBtn = $('dlgSave');
-    saveBtn.textContent = fmt === 'pdf' ? '打印 / 另存为 PDF' : '选择位置并保存';
+    saveBtn.textContent = fmt === 'pdf' ? '打印 / 另存为 PDF' : (canPickFile() ? '选择位置并保存' : '保存文件');
     dlgMeta.innerHTML = '';
     dlgBody.innerHTML = '<div class="pv-empty">正在生成预览…</div>';
     saveBtn.disabled = true;
@@ -1809,6 +1811,11 @@ body{
       return;
     }
 
+    if (!canPickFile()) {
+      dlgHint.innerHTML += '<br><b>当前是本地文件（file://）打开</b>：浏览器不允许这类页面弹系统保存对话框，' +
+        '点保存会直接下载到默认下载文件夹。想每次自选位置，可在浏览器设置里打开「下载前询问每个文件的保存位置」。';
+    }
+
     var art = outCache[fmt];
     if (!art) {
       try {
@@ -1816,6 +1823,8 @@ body{
       } catch (e) {
         if (myToken !== outToken) return;
         dlgBody.innerHTML = '<div class="pv-empty">生成失败：' + escHtml(e.message) + '</div>';
+        saveBtn.textContent = '生成失败';
+        saveBtn.disabled = true;
         return;
       }
       if (myToken !== outToken) return;
@@ -1844,9 +1853,57 @@ body{
     outToken++;          // 让还在跑的生成任务作废
   }
 
-  // 优先用系统保存对话框；不支持的浏览器退回下载
+  /* ---------------- 保存：系统对话框 → 下载 → 手动链接，逐级降级 ---------------- */
+
+  // file:// 页面里 Chrome / Edge 一律拒绝 File System Access API，
+  // 直接走下载，省得先弹一个必然失败的调用。
+  function canPickFile() {
+    if (!window.showSaveFilePicker) return false;
+    if (location.protocol === 'file:') return false;
+    return true;
+  }
+
+  function triggerDownload(name, blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // 留长一点，方便用户在兜底界面右键「链接另存为」
+    setTimeout(function () { URL.revokeObjectURL(url); }, 120000);
+    return url;
+  }
+
+  function clearSaveErr() {
+    var el = $('dlgErr');
+    if (el) { el.hidden = true; el.innerHTML = ''; }
+  }
+
+  // 最后一招：把下载链接直接摆在对话框里，让用户自己点 / 右键另存为
+  function showManualSave(name, blob, why) {
+    var el = $('dlgErr');
+    if (!el) return;
+    var url;
+    try { url = URL.createObjectURL(blob); }
+    catch (e) { url = null; }
+
+    el.hidden = false;
+    el.innerHTML =
+      '<b>没能自动保存</b>。' + (why ? '原因：' + escHtml(why) + '。' : '') + '<br>' +
+      (url
+        ? '点下面的按钮保存（会进浏览器下载文件夹，或直接弹另存为）；' +
+          '如果还是没反应，<b>右键这个按钮 → 链接另存为</b>，就能自己选位置。<br>' +
+          '<a class="dl-save" href="' + url + '" download="' + escHtml(name) + '">保存 ' + escHtml(name) + '</a>'
+        : '当前环境连临时文件都创建不了，建议改用 Chrome / Edge 打开本页面。');
+  }
+
   async function saveBlob(blob, name, type) {
-    if (window.showSaveFilePicker) {
+    var pickerErr = null;
+
+    if (canPickFile()) {
       try {
         var opts = { suggestedName: name };
         if (type) opts.types = [type];
@@ -1854,24 +1911,59 @@ body{
         var w = await handle.createWritable();
         await w.write(blob);
         await w.close();
-        toast('已保存到：' + handle.name);
-        return true;
+        return { ok: true, how: 'picker', where: handle.name };
       } catch (e) {
-        if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) return false;
-        console.warn('系统保存对话框不可用，改用下载：', e);
+        // 只有 AbortError 才是「用户自己点了取消」，其余都是被拒绝，必须继续降级
+        if (e && e.name === 'AbortError') return { ok: false, cancelled: true };
+        pickerErr = (e && e.name ? e.name + ': ' : '') + (e && e.message ? e.message : String(e));
+        console.warn('[导出] 系统保存对话框不可用：', e);
       }
     }
-    downloadFile(name, blob, blob.type);
-    toast('已交给浏览器下载（想每次自选位置，可在浏览器设置里打开「下载前询问保存位置」）');
-    return true;
+
+    try {
+      var url = triggerDownload(name, blob);
+      return { ok: true, how: 'download', where: name, url: url, pickerErr: pickerErr };
+    } catch (e2) {
+      console.warn('[导出] 自动下载也失败了：', e2);
+      return { ok: false, error: e2, pickerErr: pickerErr };
+    }
   }
 
   async function saveCurrent() {
     if (outFmt === 'pdf') { closeDlg(); setTimeout(printDoc, 120); return; }
+
     var art = outCache[outFmt];
-    if (!art) { toast('预览还没生成好'); return; }
-    var ok = await saveBlob(art.blob, FORMATS[outFmt].name(), FORMATS[outFmt].type);
-    if (ok) closeDlg();
+    if (!art) { toast('预览还在生成，稍等一下再点'); return; }
+
+    clearSaveErr();
+    var name = FORMATS[outFmt].name();
+    var r;
+
+    try {
+      r = await saveBlob(art.blob, name, FORMATS[outFmt].type);
+    } catch (e) {
+      showManualSave(name, art.blob, '保存时抛出异常 ' + (e && e.message ? e.message : e));
+      return;
+    }
+
+    if (r.cancelled) return;                       // 用户主动取消，安静收场
+
+    if (r.ok && r.how === 'picker') {
+      closeDlg();
+      toast('已保存：' + r.where);
+      return;
+    }
+
+    if (r.ok && r.how === 'download') {
+      closeDlg();
+      toast(location.protocol === 'file:'
+        ? '已下载：' + name + '（在浏览器的下载文件夹里）'
+        : '已交给浏览器下载：' + name);
+      return;
+    }
+
+    // 两条路都失败：把原因和手动链接摆出来，不再静默
+    showManualSave(name, art.blob, r.pickerErr || (r.error && r.error.message) || '浏览器拒绝了保存请求');
   }
 
   // 打印（配合 @media print，只输出纸面部分）

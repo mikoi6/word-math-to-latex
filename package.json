@@ -1,6 +1,6 @@
 {
   "name": "word-math-to-latex",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "把 .docx 里文字与公式混排的段落拆开：文字原样保留，公式转成 LaTeX；裸 LaTeX 源码则渲染成排好版的公式。单文件、零安装、完全离线。",
   "private": true,
   "type": "module",
